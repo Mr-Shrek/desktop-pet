@@ -1,0 +1,27 @@
+# 打包产物与工具（共约 570MB，绝不上传）
+dist_nuitka/
+dist/
+.packtools/
+*.build/
+*.onefile-build/
+*.dist/
+
+# 用户数据与隐私（含提醒设置、形象、位置——绝不上传！）
+pet_data.json
+*.smoke_data.json
+*.test_data.json
+
+# 临时/调试文件
+.cutout.py
+.restore_data.py
+.verify_rp_idle.png
+nuitka-crash-report.xml
+.t_*.py
+.t_shot*.py
+.chkmethods.py
+__pycache__/
+*.pyc
+
+# 编译缓存
+*.pyo
+*.pyd
