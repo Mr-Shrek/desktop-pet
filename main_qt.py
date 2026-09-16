@@ -674,18 +674,25 @@ class PetWindow(QWidget):
         """
 
     def _ensure_on_screen(self):
-        """窗口完全不在任何屏幕可视区域内时，拉回主屏中间（防窗口跑出虚拟屏后消失）"""
+        """窗口中心不在虚拟屏幕范围内时，拉回主屏中间。
+        用 Win32 API 实时查询（GetSystemMetrics），避免 Qt QScreen 列表
+        在显示器拓扑切换（如 Win+P 单屏）后残留旧副屏导致误判在屏内。"""
         try:
-            rect = QRect(self.x(), self.y(), self.win_w, self.win_h)
-            for sc in QApplication.screens():
-                if sc.availableGeometry().intersects(rect):
-                    return
+            vx = ctypes.windll.user32.GetSystemMetrics(76)   # SM_XVIRTUALSCREEN
+            vy = ctypes.windll.user32.GetSystemMetrics(77)   # SM_YVIRTUALSCREEN
+            vw = ctypes.windll.user32.GetSystemMetrics(78)   # SM_CXVIRTUALSCREEN
+            vh = ctypes.windll.user32.GetSystemMetrics(79)   # SM_CYVIRTUALSCREEN
+            cx = self.x() + self.win_w // 2
+            cy = self.y() + self.win_h // 2
+            if vx <= cx < vx + vw and vy <= cy < vy + vh:
+                return
         except Exception:
             return
         try:
-            ag = QApplication.primaryScreen().availableGeometry()
-            self.move(ag.x() + max(0, (ag.width() - self.win_w) // 2),
-                      ag.y() + max(0, (ag.height() - self.win_h) // 2))
+            cw = ctypes.windll.user32.GetSystemMetrics(0)   # SM_CXSCREEN 主屏宽
+            ch = ctypes.windll.user32.GetSystemMetrics(1)   # SM_CYSCREEN 主屏高
+            self.move(max(0, (cw - self.win_w) // 2),
+                      max(0, (ch - self.win_h) // 2))
         except Exception:
             pass
 
