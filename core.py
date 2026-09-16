@@ -100,13 +100,14 @@ FOLLOW_STOP_DIST = 26     # 跟随：鼠标距离小于该值则停（待机）
 FOLLOW_STOP_HYST = 60     # 静止档脱离滞回(px)：停住后需离开窗口且距离>26+60=86px 才恢复动画，防动画/静止闪动
 FOLLOW_WALK_DIST = 220    # 跟随：鼠标距离小于该值→走动，大于→快速跑
 FOLLOW_HYST = 40          # 跟随分档滞回带(px)：±40 内保持当前档位，防临界点跑/走闪动
-FOLLOW_WALK_STEP = 7      # 跟随·走动每帧位移(px)
-FOLLOW_RUN_STEP = 26      # 跟随·快跑每帧位移(px)
-FOLLOW_MS = 30            # 跟随模式帧间隔(ms)
+FOLLOW_WALK_STEP = 4       # 跟随·走动每帧位移(px)（FOLLOW_MS 15ms 下 ≈267px/s）
+FOLLOW_RUN_STEP = 13       # 跟随·快跑每帧位移(px)（FOLLOW_MS 15ms 下 ≈867px/s）
+FOLLOW_MS = 15             # 跟随模式帧间隔(ms)
 MOVE_THRESHOLD = 6        # 超过该位移视为拖拽而非点击
-RUN_FRAMES = ("run1", "run2", "run3", "run4", "run5", "run6", "run7", "run8")  # 跑动动画 8 帧步态循环（帧素材已由 AI 生成+程序镜像）
+RUN_FRAMES = ("run1", "run9", "run2", "run10", "run3", "run11", "run4", "run12",
+              "run5", "run13", "run6", "run14", "run7", "run15", "run8", "run16")  # 跑动 16 帧（8 关键帧+8 AI 中间帧交错）
 WALK_FRAMES = ("walk1", "walk2", "walk3", "walk4")  # 走动动画 4 帧步态循环
-FRAME_CHASE_MS = 70       # 快跑（跟随模式）换帧间隔(ms)，8 帧 14fps 更流畅
+FRAME_CHASE_MS = 45       # 快跑（跟随模式）换帧间隔(ms)，16 帧约 22fps 更流畅
 FRAME_WALK_MS = 250       # 走动换帧间隔(ms)
 WATCHDOG_MS = 2500         # 窗口看门狗轮询间隔(ms)：睡眠恢复/置顶丢失自检
 RESUME_GAP_S = 8           # 真实时间差超过该值且系统滴答几乎不动 → 判定刚睡眠恢复
