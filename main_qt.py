@@ -761,10 +761,7 @@ class PetWindow(QWidget):
             step = FOLLOW_RUN_STEP if gear == "run" else FOLLOW_WALK_STEP
             nx = int(px + dx / dist * step)
             ny = int(py + dy / dist * step)
-            sw, sh = QApplication.primaryScreen().availableGeometry().width(), \
-                     QApplication.primaryScreen().availableGeometry().height()
-            nx = max(0, min(nx, sw - self.win_w))
-            ny = max(0, min(ny, sh - self.win_h))
+            # 不夹取到主屏：QCursor 全局坐标在多显示器虚拟屏内，可直接跨屏跟随
             self.move(nx, ny)
         self._follow_gear = gear
 
@@ -802,8 +799,7 @@ class PetWindow(QWidget):
 
     # ================= 跑动（提醒到点/回家） =================
     def _run_to(self, tx, ty, cb=None):
-        tx = max(0, min(int(tx), self.screen().availableGeometry().width() - self.win_w))
-        ty = max(0, min(int(ty), self.screen().availableGeometry().height() - self.win_h))
+        tx, ty = clamp_to_screen(int(tx), int(ty), self.win_w, self.win_h)
         self._run_tx, self._run_ty = tx, ty
         self._run_cb = cb
         self._run_active = True
@@ -881,7 +877,7 @@ class PetWindow(QWidget):
         self._bubble = b
         self._countdown_action = action
         # 定位：宠物正上方居中，尾巴（底图正下）正对宠物；上方放不下则下方
-        ag = QApplication.primaryScreen().availableGeometry()
+        ag = self.screen().availableGeometry()
         wx, wy = self.x(), self.y()
         cw, ch = b.width(), b.height()
         pet_top = wy + self._base_pet_y - self._size // 2 - 6
@@ -1308,7 +1304,7 @@ class BaseDialog(QDialog):
             self._err.setText(text)
 
     def _center(self):
-        ag = QApplication.primaryScreen().availableGeometry()
+        ag = _mouse_screen_geo()
         self.adjustSize()
         self.move(ag.center().x() - self.width() // 2,
                   ag.center().y() - self.height() // 2)
@@ -1689,9 +1685,15 @@ class MsgDialog(QDialog):
             f"已恢复{PET_LABEL.get(key, key)}默认拟声", 1800)
 
     def _center(self):
-        ag = QApplication.primaryScreen().availableGeometry()
+        ag = _mouse_screen_geo()
         self.move(ag.center().x() - self.width() // 2,
                   ag.center().y() - self.height() // 2)
+
+
+def _mouse_screen_geo():
+    """鼠标所在屏幕的可用区域（跨屏弹窗居中用），失败回退主屏"""
+    sc = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
+    return sc.availableGeometry()
 
 
 # 主程序
