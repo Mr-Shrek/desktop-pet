@@ -1478,71 +1478,10 @@ class SleepDialog(BaseDialog):
 
 
 # --------------------------------------------------------------------------
-# 流式布局：空间不足自动换行（Android 新闻 Tabs 式标签）
-class _FlowLayout(QLayout):
-    def __init__(self, parent=None, margin=0, spacing=6):
-        super().__init__(parent)
-        self._items = []
-        self.setContentsMargins(margin, margin, margin, margin)
-        self.setSpacing(spacing)
-
-    def addItem(self, item):
-        self._items.append(item)
-
-    def count(self):
-        return len(self._items)
-
-    def itemAt(self, i):
-        return self._items[i] if 0 <= i < len(self._items) else None
-
-    def takeAt(self, i):
-        return self._items.pop(i) if 0 <= i < len(self._items) else None
-
-    def expandingDirections(self):
-        return Qt.Orientations(Qt.Orientation(0))
-
-    def hasHeightForWidth(self):
-        return True
-
-    def heightForWidth(self, width):
-        return self._do(QRect(0, 0, width, 0), True)
-
-    def setGeometry(self, rect):
-        super().setGeometry(rect)
-        self._do(rect, False)
-
-    def sizeHint(self):
-        return self.minimumSize()
-
-    def minimumSize(self):
-        size = QSize()
-        for it in self._items:
-            size = size.expandedTo(it.minimumSize())
-        m = self.contentsMargins()
-        return size + QSize(m.left() + m.right(), m.top() + m.bottom())
-
-    def _do(self, rect, test_only):
-        m = self.contentsMargins()
-        x, y = rect.x() + m.left(), rect.y() + m.top()
-        line_h = 0
-        for it in self._items:
-            w, h = it.sizeHint().width(), it.sizeHint().height()
-            if x + w > rect.right() - m.right() and line_h > 0:
-                x = rect.x() + m.left()
-                y += line_h + self.spacing()
-                line_h = 0
-            if not test_only:
-                it.setGeometry(QRect(x, y, w, h))
-            x += w + self.spacing()
-            line_h = max(line_h, h)
-        return y + line_h - rect.y() + m.bottom()
-
-
-# 提示语设置对话框（无边框 + 自绘标题 + 流式换行标签 + 可关闭 ×）
+# 提示语设置对话框（形象/状态下拉 + 列表卡片，无形象 Tabs）
 class MsgDialog(QDialog):
-    """每个形象一个流式胶囊标签（自动换行，全部可见），标签带 × 删除：
-    删除即清除该形象的自定义提示语（恢复默认拟声）并移除标签；
-    末尾 "+" 可重新添加已移除的形象。"""
+    """按形象 + 状态管理提示语：下拉选择形象/状态，列表展示，支持
+    添加、删除选中、恢复默认（清除该形象自定义 → 出厂拟声）。"""
     STATE_NAMES = [("idle", "待机"), ("happy", "开心"),
                    ("sleep", "睡觉"), ("surprise", "惊喜")]
     _QSS = f"""
@@ -1550,50 +1489,37 @@ class MsgDialog(QDialog):
     QLabel {{ color:{UI_FG}; font-family:'Microsoft YaHei UI'; font-size:12px;
              background:transparent; }}
     QLabel#m_title {{ font-size:14px; font-weight:bold; color:{UI_FG}; }}
-    QLabel#m_hint {{ color:{UI_SUB}; font-size:11px; }}
+    QLabel#m_field {{ color:{UI_SUB}; font-size:12px; }}
     QComboBox {{ background:#ffffff; border:1px solid {UI_INPUT_BD}; border-radius:8px;
-                 padding:6px 10px; color:{UI_FG}; font-family:'Microsoft YaHei UI';
-                 font-size:12px; min-width:90px; }}
+                 padding:6px 12px; color:{UI_FG}; font-family:'Microsoft YaHei UI';
+                 font-size:12px; min-width:110px; }}
     QComboBox:focus {{ border:1px solid {UI_ACCENT}; }}
     QComboBox QAbstractItemView {{ background:#ffffff; border:1px solid {UI_INPUT_BD};
-                 border-radius:6px; selection-background-color:{UI_MENU_HI};
-                 selection-color:{UI_ACCENT_HI}; color:{UI_FG}; }}
+                 border-radius:6px; padding:4px;
+                 selection-background-color:{UI_MENU_HI};
+                 selection-color:{UI_FG}; color:{UI_FG}; }}
     QListWidget {{ background:#ffffff; border:1px solid {UI_INPUT_BD}; border-radius:10px;
                  padding:6px; color:{UI_FG}; font-family:'Microsoft YaHei UI';
                  font-size:12px; outline:none; }}
-    QListWidget::item {{ padding:7px 10px; border-radius:6px; }}
+    QListWidget::item {{ padding:8px 12px; border-radius:6px; }}
     QListWidget::item:hover {{ background:{UI_BG2}; }}
-    QListWidget::item:selected {{ background:{UI_MENU_HI}; color:{UI_ACCENT_HI}; }}
+    QListWidget::item:selected {{ background:{UI_BG2}; color:{UI_FG};
+                 font-weight:bold; }}
     QLineEdit {{ background:#ffffff; border:1px solid {UI_INPUT_BD}; border-radius:8px;
                  padding:7px 10px; color:{UI_FG}; font-family:'Microsoft YaHei UI';
                  font-size:12px; selection-background-color:{UI_ACCENT}; }}
     QLineEdit:focus {{ border:1px solid {UI_ACCENT}; }}
-    QPushButton#m_ok {{ background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
-                 stop:0 {UI_ACCENT}, stop:1 {UI_ACCENT_HI});
+    QPushButton#m_ok {{ background:{UI_ACCENT};
                  color:#ffffff; border:none; border-radius:8px; padding:8px 28px;
                  font-family:'Microsoft YaHei UI'; font-size:12px; font-weight:bold; }}
     QPushButton#m_ok:hover {{ background:{UI_ACCENT_HI}; }}
     QPushButton#m_sec {{ background:#ffffff; color:{UI_FG};
-                 border:1px solid {UI_INPUT_BD}; border-radius:8px; padding:8px 18px;
+                 border:1px solid {UI_INPUT_BD}; border-radius:8px; padding:8px 16px;
                  font-family:'Microsoft YaHei UI'; font-size:12px; }}
     QPushButton#m_sec:hover {{ background:{UI_BG2}; }}
     QPushButton#m_close {{ background:transparent; border:none; color:{UI_SUB};
                  font-size:14px; border-radius:8px; padding:2px 10px; }}
     QPushButton#m_close:hover {{ background:{UI_ERR}; color:#ffffff; }}
-    QPushButton#pet_tab {{ background:#ffffff; color:{UI_FG};
-                 border:1px solid {UI_INPUT_BD}; border-radius:14px;
-                 padding:5px 11px; font-family:'Microsoft YaHei UI'; font-size:12px; }}
-    QPushButton#pet_tab:hover {{ border-color:{UI_ACCENT}; color:{UI_ACCENT}; }}
-    QPushButton#pet_tab:checked {{ background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
-                 stop:0 {UI_ACCENT}, stop:1 {UI_ACCENT_HI});
-                 color:#ffffff; border-color:{UI_ACCENT}; }}
-    QPushButton#pet_close {{ background:transparent; border:none; color:{UI_SUB};
-                 font-size:11px; padding:0 5px; border-radius:9px; }}
-    QPushButton#pet_close:hover {{ background:{UI_ERR}; color:#ffffff; }}
-    QPushButton#pet_add {{ background:#ffffff; color:{UI_ACCENT};
-                 border:1px dashed {UI_ACCENT}; border-radius:14px; padding:5px 11px;
-                 font-family:'Microsoft YaHei UI'; font-size:13px; }}
-    QPushButton#pet_add:hover {{ background:{UI_BG2}; }}
     """
 
     def __init__(self, pet_win):
@@ -1606,7 +1532,7 @@ class MsgDialog(QDialog):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-        # 自绘标题栏（可拖拽 + 关闭按钮）
+        # 自绘标题栏（可拖拽 + 关闭）
         self._title_bar = QWidget(self)
         self._title_bar.setFixedHeight(44)
         self._title_bar.setStyleSheet(
@@ -1626,34 +1552,66 @@ class MsgDialog(QDialog):
         root.addWidget(self._title_bar)
         # 内容区
         body = QVBoxLayout()
-        body.setContentsMargins(18, 12, 18, 16)
+        body.setContentsMargins(18, 14, 18, 16)
         body.setSpacing(10)
-        # 流式标签栏（自动换行，全部可见）
-        self._bar = QWidget(self)
-        self._bar.setStyleSheet("background:transparent;")
-        self._bar_lay = _FlowLayout(self._bar, margin=0, spacing=6)
-        self._bar.setLayout(self._bar_lay)
-        body.addWidget(self._bar)
-        # 内容区
-        self._stack = QStackedWidget(self)
-        self._stack.setStyleSheet("QStackedWidget{background:transparent;}")
-        body.addWidget(self._stack, 1)
-        # 按钮行
-        br = QHBoxLayout()
-        br.addStretch(1)
+        # 形象 / 状态选择行
+        sel = QHBoxLayout()
+        sel.setSpacing(8)
+        sel.addWidget(self._label("形象：", "m_field"))
+        self._pet_cb = QComboBox()
+        self._pet_idx = {}
+        for i, (key, label) in enumerate(PETS):
+            self._pet_cb.addItem(label)
+            self._pet_idx[i] = key
+        self._pet_cb.setCurrentIndex(max(0, PET_KEYS.index(self._pet._pet)
+                                         if self._pet._pet in PET_KEYS else 0))
+        sel.addWidget(self._pet_cb)
+        sel.addSpacing(12)
+        sel.addWidget(self._label("状态：", "m_field"))
+        self._state_cb = QComboBox()
+        for _, nm in self.STATE_NAMES:
+            self._state_cb.addItem(nm)
+        sel.addWidget(self._state_cb)
+        sel.addStretch(1)
+        body.addLayout(sel)
+        # 提示语列表
+        self._lst = QListWidget()
+        body.addWidget(self._lst, 1)
+        # 输入行
+        inp_row = QHBoxLayout()
+        inp_row.setSpacing(8)
+        self._inp = QLineEdit()
+        self._inp.setPlaceholderText("输入新提示语，回车或点添加…")
+        add_btn = QPushButton("添加")
+        add_btn.setObjectName("m_sec")
+        del_btn = QPushButton("删除选中")
+        del_btn.setObjectName("m_sec")
+        inp_row.addWidget(self._inp, 1)
+        inp_row.addWidget(add_btn)
+        inp_row.addWidget(del_btn)
+        body.addLayout(inp_row)
+        # 底行：恢复默认（左） 确定（右）
+        bottom = QHBoxLayout()
+        reset_btn = QPushButton("↺ 恢复默认拟声")
+        reset_btn.setObjectName("m_sec")
+        reset_btn.setToolTip("清除该形象的自定义提示语，恢复为出厂拟声")
+        bottom.addWidget(reset_btn)
+        bottom.addStretch(1)
         ok_btn = QPushButton("确定")
         ok_btn.setObjectName("m_ok")
         ok_btn.clicked.connect(self.accept)
-        br.addWidget(ok_btn)
-        body.addLayout(br)
+        bottom.addWidget(ok_btn)
+        body.addLayout(bottom)
         root.addLayout(body)
-        self._pages = {}      # key -> [page, tab_btn, close_btn]
-        self._order = []
-        self._edits = {}
-        for key, label in PETS:
-            self._add_pet_tab(key, label, select=True)
-        self._make_add_btn()
-        self.setMinimumWidth(560)
+        # 信号
+        self._pet_cb.currentIndexChanged.connect(self._reload)
+        self._state_cb.currentIndexChanged.connect(self._reload)
+        add_btn.clicked.connect(self._add_msg)
+        del_btn.clicked.connect(self._del_msg)
+        reset_btn.clicked.connect(self._reset_pet)
+        self._inp.returnPressed.connect(self._add_msg)
+        self.setFixedWidth(560)
+        self._reload()
         self.adjustSize()
         self._center()
 
@@ -1677,160 +1635,58 @@ class MsgDialog(QDialog):
         self._drag = None
         super().mouseReleaseEvent(ev)
 
-    # ---------- 标签构建 ----------
-    def _add_pet_tab(self, key, label, select=False):
-        page = self._build_page(key, label)
-        tbtn = QPushButton(label, self._bar)
-        tbtn.setObjectName("pet_tab")
-        tbtn.setCheckable(True)
-        tbtn.setCursor(Qt.PointingHandCursor)
-        tbtn.clicked.connect(lambda _=False, k=key: self._select(k))
-        cbtn = QPushButton("✕", self._bar)
-        cbtn.setObjectName("pet_close")
-        cbtn.setCursor(Qt.PointingHandCursor)
-        cbtn.clicked.connect(lambda _=False, k=key: self._remove_tab(k))
-        self._bar_lay.addWidget(tbtn)
-        self._bar_lay.addWidget(cbtn)
-        self._pages[key] = [page, tbtn, cbtn]
-        self._order.append(key)
-        if select:
-            self._select(key)
-        return page
-
-    def _build_page(self, key, label):
-        page = QWidget()
-        pl = QVBoxLayout(page)
-        pl.setContentsMargins(2, 4, 2, 0)
-        pl.setSpacing(8)
-        row = QHBoxLayout()
-        row.setSpacing(8)
-        row.addWidget(self._label(f"{label} · 状态："))
-        cb = QComboBox()
-        for _, nm in self.STATE_NAMES:
-            cb.addItem(nm)
-        row.addWidget(cb)
-        row.addStretch(1)
-        pl.addLayout(row)
-        lst = QListWidget(page)
-        pl.addWidget(lst, 1)
-        add_row = QHBoxLayout()
-        add_row.setSpacing(8)
-        inp = QLineEdit(page)
-        inp.setPlaceholderText("输入新提示语，回车或点添加…")
-        add_btn = QPushButton("添加")
-        add_btn.setObjectName("m_sec")
-        del_btn = QPushButton("删除选中")
-        del_btn.setObjectName("m_sec")
-        add_row.addWidget(inp, 1)
-        add_row.addWidget(add_btn)
-        add_row.addWidget(del_btn)
-        pl.addLayout(add_row)
-        self._edits[key] = {"cb": cb, "lst": lst, "inp": inp}
-        self._reload(key)
-        cb.currentIndexChanged.connect(lambda _=0, k=key: self._reload(k))
-        add_btn.clicked.connect(lambda _=False, k=key: self._add_msg(k))
-        del_btn.clicked.connect(lambda _=False, k=key: self._del_msg(k))
-        inp.returnPressed.connect(lambda k=key: self._add_msg(k))
-        self._stack.addWidget(page)
-        return page
-
-    def _label(self, text, sub=False):
+    def _label(self, text, obj=None):
         lb = QLabel(text)
-        if sub:
-            lb.setObjectName("m_hint")
+        if obj:
+            lb.setObjectName(obj)
         return lb
 
-    def _make_add_btn(self):
-        ab = QPushButton("＋", self._bar)
-        ab.setObjectName("pet_add")
-        ab.setCursor(Qt.PointingHandCursor)
-        ab.clicked.connect(self._add_missing_menu)
-        self._bar_lay.addWidget(ab)
-        self._add_btn = ab
+    # ---------- 数据 ----------
+    def _pet_key(self):
+        return self._pet_idx[self._pet_cb.currentIndex()]
 
-    def _add_missing_menu(self):
-        missing = [k for k, _ in PETS if k not in self._pages]
-        if not missing:
-            return
-        mm = QMenu(self)
-        mm.setStyleSheet(self._pet._menu_qss())
-        for key in missing:
-            a = mm.addAction(PET_LABEL.get(key, key))
-            a.triggered.connect(lambda _=False, k=key: self._add_pet_tab(
-                k, PET_LABEL.get(k, k), select=True))
-        mm.exec_(self._add_btn.mapToGlobal(
-            self._add_btn.rect().bottomLeft()))
-        self.adjustSize()
+    def _state_of(self):
+        return self.STATE_NAMES[self._state_cb.currentIndex()][0]
 
-    # ---------- 标签交互 ----------
-    def _select(self, key):
-        idx = self._stack.indexOf(self._pages[key][0])
-        if idx >= 0:
-            self._stack.setCurrentIndex(idx)
-        for k, (_, tb, _) in self._pages.items():
-            tb.setChecked(k == key)
-
-    def _remove_tab(self, key):
-        if key not in self._pages:
-            return
-        remove_pet_msgs(key)     # 清除自定义 → 恢复默认拟声
-        page, tbtn, cbtn = self._pages.pop(key)
-        self._bar_lay.takeAt(self._bar_lay.indexOf(tbtn))
-        tbtn.deleteLater()
-        self._bar_lay.takeAt(self._bar_lay.indexOf(cbtn))
-        cbtn.deleteLater()
-        self._stack.removeWidget(page)
-        page.deleteLater()
-        self._order.remove(key)
-        if self._stack.count() == 0:
-            empty = QLabel("已移除全部形象，点右下“＋”重新添加", self._stack)
-            empty.setAlignment(Qt.AlignCenter)
-            empty.setObjectName("m_hint")
-            self._stack.addWidget(empty)
-            self._stack.setCurrentWidget(empty)
-        else:
-            n = self._stack.count()
-            self._stack.setCurrentIndex(min(self._stack.currentIndex(), n - 1))
-            self._select(self._order[-1])
-        self._pet.show_bubble(f"已移除{PET_LABEL.get(key, key)}提示语（恢复默认）", 1800)
-        self.adjustSize()
-
-    # ---------- 状态/增删 ----------
-    def _state_of(self, key):
-        return self.STATE_NAMES[self._edits[key]["cb"].currentIndex()][0]
-
-    def _reload(self, key):
+    def _reload(self, *_):
+        key = self._pet_key()
         msgs = get_pet_msgs(key)
-        st = self._state_of(key)
-        lst = self._edits[key]["lst"]
-        lst.clear()
+        st = self._state_of()
+        self._lst.clear()
         for m in msgs[st]:
-            lst.addItem(m)
+            self._lst.addItem(m)
 
-    def _add_msg(self, key):
-        inp = self._edits[key]["inp"]
-        text = inp.text().strip()
+    def _add_msg(self):
+        key = self._pet_key()
+        text = self._inp.text().strip()
         if not text:
             return
         msgs = get_pet_msgs(key)
-        st = self._state_of(key)
+        st = self._state_of()
         if text not in msgs[st]:
             msgs[st].append(text)
             save_pet_msgs(key, msgs)
-            inp.clear()
-        self._reload(key)
+            self._inp.clear()
+        self._reload()
 
-    def _del_msg(self, key):
-        lst = self._edits[key]["lst"]
-        row = lst.currentRow()
+    def _del_msg(self):
+        key = self._pet_key()
+        row = self._lst.currentRow()
         if row < 0:
             return
         msgs = get_pet_msgs(key)
-        st = self._state_of(key)
+        st = self._state_of()
         if 0 <= row < len(msgs[st]):
             msgs[st].pop(row)
             save_pet_msgs(key, msgs)
-        self._reload(key)
+        self._reload()
+
+    def _reset_pet(self):
+        key = self._pet_key()
+        remove_pet_msgs(key)
+        self._reload()
+        self._pet.show_bubble(
+            f"已恢复{PET_LABEL.get(key, key)}默认拟声", 1800)
 
     def _center(self):
         ag = QApplication.primaryScreen().availableGeometry()
