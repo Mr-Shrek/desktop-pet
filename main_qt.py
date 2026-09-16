@@ -22,7 +22,7 @@ from PyQt5.QtCore import (Qt, QTimer, QPoint, QRect, QSize, pyqtSignal)
 from PyQt5.QtGui import (QPixmap, QPainter, QColor, QFont, QFontMetrics,
                          QPainterPath, QPen, QBrush, QIcon, QImage,
                          QTransform, QLinearGradient, QRadialGradient,
-                         QPolygonF, QMouseEvent, QContextMenuEvent)
+                         QPolygonF, QMouseEvent, QContextMenuEvent, QCursor)
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QMenu,
                              QSystemTrayIcon, QDialog, QVBoxLayout,
                              QHBoxLayout, QLineEdit, QPushButton, QCheckBox,
@@ -714,9 +714,8 @@ class PetWindow(QWidget):
     def _follow_tick(self):
         if not self._follow_mode or self._dragging or self._run_active:
             return
-        pt = ctypes.wintypes.POINT()
-        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
-        cx, cy = pt.x, pt.y
+        pos = QCursor.pos()
+        cx, cy = pos.x(), pos.y()
         px, py = self.x(), self.y()
         dx, dy = cx - (px + self.win_w // 2), cy - (py + self.win_h // 2)
         dist = (dx * dx + dy * dy) ** 0.5
