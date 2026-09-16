@@ -36,7 +36,7 @@ FOLLOW_INTERVAL = 30         # 跟随模式帧间隔(ms)
 MOVE_THRESHOLD = 6           # 超过该位移视为拖拽而非点击
 
 SPRITES = ["idle", "happy", "sleep", "surprise"]
-# 浣熊：正常打招呼：啾噜 开心干饭：吱咔吱咔 生气警告：嘶 ——
+
 MESSAGES = {
     "idle": [
         "喵～", "今天也要加油哦！", "摸摸我嘛～", "我在这里陪你～",

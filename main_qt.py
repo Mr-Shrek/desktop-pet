@@ -27,7 +27,8 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QMenu,
                              QSystemTrayIcon, QDialog, QVBoxLayout,
                              QHBoxLayout, QLineEdit, QPushButton, QCheckBox,
                              QComboBox, QSpinBox, QGraphicsDropShadowEffect,
-                             QFrame, QSizePolicy, QToolTip)
+                             QFrame, QSizePolicy, QToolTip, QTabWidget,
+                             QListWidget)
 
 APP_NAME = "收工喵"
 MUTEX_NAME = "Local\\ShouGongMiaoPetMutex"   # 与 tk 版共用，双版本互斥
@@ -557,12 +558,12 @@ class PetWindow(QWidget):
                 self._click_timer.stop()
             self._suppress_click = True
             self.set_state("happy", REACT_MS)
-            self.show_bubble(random.choice(MESSAGES["happy"]))
+            self.show_bubble(pick_pet_msg(self._pet, "happy"))
 
     def _single_click(self):
         name = random.choice(["surprise", "happy"])
         self.set_state(name, REACT_MS)
-        self.show_bubble(random.choice(MESSAGES[name]))
+        self.show_bubble(pick_pet_msg(self._pet, name))
 
     # ================= 右键菜单 =================
     def _popup_menu(self, gpos):
@@ -595,6 +596,8 @@ class PetWindow(QWidget):
         act_follow.setCheckable(True)
         act_follow.setChecked(self._follow_mode)
         act_follow.triggered.connect(self.set_follow)
+        a_msg = m.addAction("💬 提示语设置…")
+        a_msg.triggered.connect(self._open_msg_dialog)
         # 定时提醒子菜单（含已设提醒列表，可点击取消）
         rem_menu = m.addMenu("⏰ 定时提醒")
         a_add = rem_menu.addAction("➕ 添加提醒…")
@@ -978,6 +981,10 @@ class PetWindow(QWidget):
         d = SleepDialog(self)
         d.exec_()
 
+    def _open_msg_dialog(self):
+        d = MsgDialog(self)
+        d.exec_()
+
     # ================= 定时提醒 =================
     def _timer_tick(self):
         fired_r, fired_d, changed = check_reminders(self._timers, self._dailies)
@@ -1028,7 +1035,7 @@ class PetWindow(QWidget):
         if self.state != "idle" or self._follow_mode or self._hidden:
             self._random_bubble_t.start(random.randint(*BUBBLE_INTERVAL))
             return
-        self.show_bubble(random.choice(MESSAGES["idle"]), 2200)
+        self.show_bubble(pick_pet_msg(self._pet, "idle"), 2200)
         self._random_bubble_t.start(random.randint(*BUBBLE_INTERVAL))
 
     # ================= 看门狗（睡眠恢复） =================
@@ -1069,6 +1076,8 @@ class PetWindow(QWidget):
         act_follow.setCheckable(True)
         act_follow.setChecked(self._follow_mode)
         act_follow.triggered.connect(self.set_follow)
+        a_msg = menu.addAction("💬 提示语设置…")
+        a_msg.triggered.connect(self._open_msg_dialog)
         menu.addSeparator()
         pet_menu = menu.addMenu("🎭 选择形象")
         from PyQt5.QtWidgets import QActionGroup
@@ -1435,6 +1444,98 @@ class SleepDialog(BaseDialog):
             return
         self._pet.schedule_sleep(clock[0], clock[1])
         self.accept()
+
+
+# --------------------------------------------------------------------------
+# 提示语设置对话框（Tabs 按形象，支持增删自定义提示语）
+# --------------------------------------------------------------------------
+class MsgDialog(BaseDialog):
+    """提示语设置：QTabWidget 每个形象一页；按状态（待机/开心/睡觉/惊喜）
+    列出提示语，可添加（回车或按钮）与删除选中，改动即时持久化。"""
+    STATE_NAMES = [("idle", "待机"), ("happy", "开心"),
+                   ("sleep", "睡觉"), ("surprise", "惊喜")]
+
+    def __init__(self, pet_win):
+        super().__init__("💬 提示语设置")
+        self._pet = pet_win
+        tabs = QTabWidget(self)
+        tabs.setObjectName("msg_tabs")
+        self._edits = {}
+        for key, label in PETS:
+            page = QWidget()
+            pl = QVBoxLayout(page)
+            pl.setContentsMargins(10, 10, 10, 10)
+            pl.setSpacing(8)
+            row = QHBoxLayout()
+            row.addWidget(self._label("状态："))
+            cb = QComboBox()
+            for _, nm in self.STATE_NAMES:
+                cb.addItem(nm)
+            row.addWidget(cb)
+            row.addStretch(1)
+            pl.addLayout(row)
+            lst = QListWidget(page)
+            pl.addWidget(lst, 1)
+            add_row = QHBoxLayout()
+            inp = QLineEdit(page)
+            inp.setPlaceholderText("输入新提示语，回车或点添加…")
+            add_btn = QPushButton("添加")
+            add_btn.setObjectName("secondary")
+            del_btn = QPushButton("删除选中")
+            del_btn.setObjectName("secondary")
+            add_row.addWidget(inp, 1)
+            add_row.addWidget(add_btn)
+            add_row.addWidget(del_btn)
+            pl.addLayout(add_row)
+            self._edits[key] = {"cb": cb, "lst": lst, "inp": inp}
+            self._reload(key)
+            cb.currentIndexChanged.connect(
+                lambda _=0, k=key: self._reload(k))
+            add_btn.clicked.connect(lambda _=False, k=key: self._add_msg(k))
+            del_btn.clicked.connect(lambda _=False, k=key: self._del_msg(k))
+            inp.returnPressed.connect(lambda k=key: self._add_msg(k))
+            tabs.addTab(page, label)
+        self._lay.addWidget(tabs, 1)
+        self._err_label()
+        self._btn_row(self.accept)
+        self._center()
+        self.resize(480, 440)
+
+    def _state_of(self, key):
+        return self.STATE_NAMES[self._edits[key]["cb"].currentIndex()][0]
+
+    def _reload(self, key):
+        msgs = get_pet_msgs(key)
+        st = self._state_of(key)
+        lst = self._edits[key]["lst"]
+        lst.clear()
+        for m in msgs[st]:
+            lst.addItem(m)
+
+    def _add_msg(self, key):
+        inp = self._edits[key]["inp"]
+        text = inp.text().strip()
+        if not text:
+            return
+        msgs = get_pet_msgs(key)
+        st = self._state_of(key)
+        if text not in msgs[st]:
+            msgs[st].append(text)
+            save_pet_msgs(key, msgs)
+            inp.clear()
+        self._reload(key)
+
+    def _del_msg(self, key):
+        lst = self._edits[key]["lst"]
+        row = lst.currentRow()
+        if row < 0:
+            return
+        msgs = get_pet_msgs(key)
+        st = self._state_of(key)
+        if 0 <= row < len(msgs[st]):
+            msgs[st].pop(row)
+            save_pet_msgs(key, msgs)
+        self._reload(key)
 
 
 # --------------------------------------------------------------------------

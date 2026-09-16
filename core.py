@@ -12,6 +12,7 @@ import ctypes
 import json
 import math
 import os
+import random
 import sys
 import time
 import winreg
@@ -142,15 +143,45 @@ UI_ERR = "#D94F4F"        # 错误提示红
 UI_INPUT_BD = "#E5CFB8"   # 输入框边框
 UI_MENU_HI = "#FFF0E2"    # 菜单项悬停背景
 
-MESSAGES = {
-    "idle": [
-        "喵～", "今天也要加油哦！", "摸摸我嘛～", "我在这里陪你～",
-        "起来活动一下！", "写累了就休息会儿吧", "吃点什么好呢…",
-    ],
-    "happy": ["嘿嘿，好开心！", "被投喂啦！", "最喜欢你啦！", "再玩一次！"],
-    "sleep": ["zZz…", "呼噜呼噜…", "别吵我…", "好困…"],
-    "surprise": ["哇！", "吓我一跳！", "呜哇！"],
+# 提示语按形象区分（结合各动物实际叫声的中文拟声；自定义覆盖存 pet_data.json）
+PET_MSGS = {
+    "cat": {
+        "idle": ["喵～", "喵呜～", "今天也要加油哦！", "摸摸我嘛～",
+                 "我在这里陪你～", "起来活动一下！", "写累了就休息会儿吧"],
+        "happy": ["嘿嘿，好开心！", "被投喂啦！", "最喜欢你啦！", "再玩一次！"],
+        "sleep": ["zZz…", "呼噜呼噜…", "别吵我…", "好困…"],
+        "surprise": ["哇！", "吓我一跳！", "呜哇！"],
+    },
+    "redpanda": {   # 小熊猫：高频啾啾（chirp），似鸟鸣
+        "idle": ["啾啾～", "叽叽～", "今天也要加油哦！", "摸摸我嘛～",
+                 "我在这里陪你～", "起来活动一下！"],
+        "happy": ["啾！好开心！", "被投喂啦！", "最喜欢你啦！", "再玩一次！"],
+        "sleep": ["zZz…", "呼噜呼噜…", "别吵我…", "好困…"],
+        "surprise": ["哇！", "吓我一跳！", "呜哇！"],
+    },
+    "panda": {      # 大熊猫：咩咩（似羊）/哞哞（低鸣）
+        "idle": ["咩～", "哞哞～", "今天也要加油哦！", "摸摸我嘛～",
+                 "我在这里陪你～", "起来活动一下！"],
+        "happy": ["咩！好开心！", "被投喂啦！", "最喜欢你啦！", "再玩一次！"],
+        "sleep": ["zZz…", "呼噜呼噜…", "别吵我…", "好困…"],
+        "surprise": ["哇！", "吓我一跳！", "呜哇！"],
+    },
+    "capybara": {   # 卡皮巴拉：咕噜咕噜（purr）/哼哼（哼唧）
+        "idle": ["咕噜～", "哼哼～", "今天也要加油哦！", "摸摸我嘛～",
+                 "我在这里陪你～", "起来活动一下！"],
+        "happy": ["咕噜咕噜！", "被投喂啦！", "最喜欢你啦！", "再玩一次！"],
+        "sleep": ["zZz…", "呼噜呼噜…", "别吵我…", "好困…"],
+        "surprise": ["哇！", "吓我一跳！", "呜哇！"],
+    },
+    "husky": {      # 哈士奇：嗷呜（狼嚎）/汪汪
+        "idle": ["嗷呜～", "汪汪～", "今天也要加油哦！", "摸摸我嘛～",
+                 "我在这里陪你～", "起来活动一下！"],
+        "happy": ["嗷呜！好开心！", "被投喂啦！", "最喜欢你啦！", "再玩一次！"],
+        "sleep": ["zZz…", "呼噜呼噜…", "别吵我…", "好困…"],
+        "surprise": ["哇！", "吓我一跳！", "呜哇！"],
+    },
 }
+MESSAGES = PET_MSGS["cat"]   # 兼容旧引用（tk 版等）
 
 
 # ---------- 输入解析 ----------
@@ -307,6 +338,40 @@ def load_saved_pet():
         return pet if pet in PET_KEYS else DEFAULT_PET
     except Exception:
         return DEFAULT_PET
+
+
+# ---------- 提示语（按形象，含默认拟声 + 自定义覆盖） ----------
+def get_pet_msgs(pet_key):
+    """当前形象提示语：数据里自定义过用自定义（含空列表），否则用默认"""
+    defaults = PET_MSGS.get(pet_key) or PET_MSGS["cat"]
+    data = load_data()
+    try:
+        saved = (data or {}).get("pet_msgs") or {}
+        saved = saved.get(pet_key) or {}
+    except Exception:
+        saved = {}
+    out = {}
+    for st, lst in defaults.items():
+        sl = saved.get(st)
+        out[st] = list(sl) if sl is not None else list(lst)
+    return out
+
+
+def save_pet_msgs(pet_key, msgs):
+    """持久化某形象的提示语（合并写，不丢 reminders 等其他字段）"""
+    data = load_data() or {}
+    pet_msgs = dict(data.get("pet_msgs") or {})
+    pet_msgs[pet_key] = {st: list(lst) for st, lst in msgs.items()}
+    data["pet_msgs"] = pet_msgs
+    save_data(data)
+
+
+def pick_pet_msg(pet_key, state):
+    """随机取一条提示语；该状态被删空时回退默认（cat）"""
+    msgs = get_pet_msgs(pet_key).get(state) or []
+    if not msgs:
+        msgs = PET_MSGS["cat"].get(state) or ["喵～"]
+    return random.choice(msgs)
 
 
 # ---------- 提醒列表 ↔ 数据文件 转换 ----------
@@ -487,7 +552,8 @@ __all__ = [
     "SLEEP_COUNTDOWN_S", "DAILY_ACTIONS", "ACTION_LABEL", "ACTION_ICON",
     "ACTION_KEY", "SPRITES", "ANIM_SPRITES", "FONT", "FONT_BOLD",
     "UI_BG", "UI_BG2", "UI_FG", "UI_SUB", "UI_ACCENT", "UI_ACCENT_HI",
-    "UI_ERR", "UI_INPUT_BD", "UI_MENU_HI", "MESSAGES",
+    "UI_ERR", "UI_INPUT_BD", "UI_MENU_HI", "MESSAGES", "PET_MSGS",
+    "get_pet_msgs", "save_pet_msgs", "pick_pet_msg",
     "parse_reminder", "fmt_remaining", "parse_clock", "_normalize_daily_action",
     "AUTOSTART_KEY", "AUTOSTART_NAME", "autostart_command",
     "is_autostart_enabled", "set_autostart",
