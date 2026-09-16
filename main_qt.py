@@ -1170,7 +1170,7 @@ class PetWindow(QWidget):
         self._tray.show()
 
     def _update_tray_icon(self):
-        pm = self._cache.any_frame(self._pet, 64)
+        pm = self._cache.any_frame(self._pet, 128)
         self._tray.setIcon(QIcon(pm))
 
     def _on_tray_activated(self, reason):
@@ -1698,6 +1698,9 @@ class MsgDialog(QDialog):
 # --------------------------------------------------------------------------
 def main():
     set_dpi_aware()
+    # Qt 高 DPI 缩放（必须在 QApplication 创建前）：高分屏下菜单/字体/图标自动放大清晰
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     if not acquire_single_instance(MUTEX_NAME):
         QApplication.instance() or QApplication(sys.argv)
         return   # 已有实例在运行，直接退出
