@@ -673,9 +673,26 @@ class PetWindow(QWidget):
         QMenu::indicator {{ width:14px; height:14px; }}
         """
 
+    def _ensure_on_screen(self):
+        """窗口完全不在任何屏幕可视区域内时，拉回主屏中间（防窗口跑出虚拟屏后消失）"""
+        try:
+            rect = QRect(self.x(), self.y(), self.win_w, self.win_h)
+            for sc in QApplication.screens():
+                if sc.availableGeometry().intersects(rect):
+                    return
+        except Exception:
+            return
+        try:
+            ag = QApplication.primaryScreen().availableGeometry()
+            self.move(ag.x() + max(0, (ag.width() - self.win_w) // 2),
+                      ag.y() + max(0, (ag.height() - self.win_h) // 2))
+        except Exception:
+            pass
+
     def _toggle_visible(self):
         if self._hidden:
             self._hidden = False
+            self._ensure_on_screen()
             self.show()
         else:
             self._hidden = True
@@ -729,7 +746,7 @@ class PetWindow(QWidget):
             self._follow_gear = "stop"
 
     def _follow_tick(self):
-        if not self._follow_mode or self._dragging or self._run_active:
+        if not self._follow_mode or self._dragging or self._run_active or self._hidden:
             return
         pos = QCursor.pos()
         cx, cy = pos.x(), pos.y()
@@ -761,7 +778,8 @@ class PetWindow(QWidget):
             step = FOLLOW_RUN_STEP if gear == "run" else FOLLOW_WALK_STEP
             nx = int(px + dx / dist * step)
             ny = int(py + dy / dist * step)
-            # 不夹取到主屏：QCursor 全局坐标在多显示器虚拟屏内，可直接跨屏跟随
+            # 夹取到全局虚拟屏幕范围：支持跨屏跟随，但防止窗口跑出虚拟屏后消失
+            nx, ny = clamp_to_screen(nx, ny, self.win_w, self.win_h)
             self.move(nx, ny)
         self._follow_gear = gear
 
@@ -1065,6 +1083,9 @@ class PetWindow(QWidget):
         if detect_resume(self._last_real, self._last_tick, now, tick):
             self._restore_window(resumed=True)
         else:
+            # 位置自愈：窗口跑出所有屏幕可视区时拉回主屏（副屏拔掉/显示器切换场景）
+            if not self._hidden:
+                self._ensure_on_screen()
             # 窗口丢失置顶/映射时自愈（睡眠恢复后系统可能改变窗口状态）
             if not self._hidden:
                 if not self.isVisible():
@@ -1078,6 +1099,7 @@ class PetWindow(QWidget):
     def _restore_window(self, resumed=False):
         if self._hidden:
             self._hidden = False
+        self._ensure_on_screen()
         self.show()
         self.raise_()
         if resumed:
