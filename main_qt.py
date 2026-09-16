@@ -827,9 +827,18 @@ class PetWindow(QWidget):
         self._tick_motion_frame()
         nx = int(px + dx / dist * FOLLOW_RUN_STEP)
         ny = int(py + dy / dist * FOLLOW_RUN_STEP)
-        ag = self.screen().availableGeometry()
-        nx = max(0, min(nx, ag.width() - self.win_w))
-        ny = max(0, min(ny, ag.height() - self.win_h))
+        # 用全局虚拟屏幕范围夹取（多屏安全）；不能用 self.screen() 的宽度当边界
+        nx, ny = clamp_to_screen(nx, ny, self.win_w, self.win_h)
+        if (nx, ny) == (px, py):
+            # 已被屏幕边界挡住、无法再前进：强制结束，防止 run_active 永久卡死
+            self.move(nx, ny)
+            self._run_active = False
+            self._stop_motion()
+            cb = self._run_cb
+            self._run_cb = None
+            if cb:
+                cb()
+            return
         self.move(nx, ny)
         QTimer.singleShot(FRAME_MS, self._run_tick)
 
@@ -846,8 +855,9 @@ class PetWindow(QWidget):
         except Exception:
             pass
         ag = self.screen().availableGeometry()
-        tx = max(0, (ag.width() - self.win_w) // 2)
-        ty = max(0, (ag.height() - self.win_h) // 2)
+        # 目标 = 当前屏幕（含多屏全局坐标偏移）的正中间
+        tx = ag.x() + max(0, (ag.width() - self.win_w) // 2)
+        ty = ag.y() + max(0, (ag.height() - self.win_h) // 2)
         if self._dragging:
             self._notify_from = None
             self._show_bubble(msg, action, countdown)
