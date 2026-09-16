@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QMenu,
                              QHBoxLayout, QLineEdit, QPushButton, QCheckBox,
                              QComboBox, QSpinBox, QGraphicsDropShadowEffect,
                              QFrame, QSizePolicy, QToolTip, QTabWidget,
-                             QListWidget)
+                             QListWidget, QStackedWidget, QScrollArea)
 
 APP_NAME = "收工喵"
 MUTEX_NAME = "Local\\ShouGongMiaoPetMutex"   # 与 tk 版共用，双版本互斥
@@ -550,7 +550,8 @@ class PetWindow(QWidget):
             self._click_timer = QTimer(self)
             self._click_timer.setSingleShot(True)
             self._click_timer.timeout.connect(self._single_click)
-        self._click_timer.start(CLICK_DELAY_MS)
+        # 判定窗口 >= 系统双击间隔：双击永远先于单击反应判定，消除连击感
+        self._click_timer.start(QApplication.doubleClickInterval() + 50)
 
     def mouseDoubleClickEvent(self, ev):
         if ev.button() == Qt.LeftButton:
@@ -590,6 +591,18 @@ class PetWindow(QWidget):
         a_big.triggered.connect(lambda: self.set_size(self._size + SIZE_STEP))
         a_small = size_menu.addAction("减小（-50）")
         a_small.triggered.connect(lambda: self.set_size(self._size - SIZE_STEP))
+        size_menu.addSeparator()
+        for _s in range(MIN_PET_SIZE, self._max_size + 1, SIZE_STEP):
+            _a = size_menu.addAction(f"{_s}px")
+            _a.setCheckable(True)
+            _a.setChecked(_s == self._size)
+            _a.triggered.connect(lambda _=False, v=_s: self.set_size(v))
+        if (self._max_size - MIN_PET_SIZE) % SIZE_STEP:
+            _a = size_menu.addAction(f"{self._max_size}px")
+            _a.setCheckable(True)
+            _a.setChecked(self._max_size == self._size)
+            _a.triggered.connect(lambda _=False,
+                                 v=self._max_size: self.set_size(v))
         m.addSeparator()
         # 跟随
         act_follow = m.addAction("🖱️ 跟随鼠标")
@@ -1093,6 +1106,18 @@ class PetWindow(QWidget):
         a1.triggered.connect(lambda: self.set_size(self._size + SIZE_STEP))
         a2 = size_menu.addAction("减小（-50）")
         a2.triggered.connect(lambda: self.set_size(self._size - SIZE_STEP))
+        size_menu.addSeparator()
+        for _s in range(MIN_PET_SIZE, self._max_size + 1, SIZE_STEP):
+            _a = size_menu.addAction(f"{_s}px")
+            _a.setCheckable(True)
+            _a.setChecked(_s == self._size)
+            _a.triggered.connect(lambda _=False, v=_s: self.set_size(v))
+        if (self._max_size - MIN_PET_SIZE) % SIZE_STEP:
+            _a = size_menu.addAction(f"{self._max_size}px")
+            _a.setCheckable(True)
+            _a.setChecked(self._max_size == self._size)
+            _a.triggered.connect(lambda _=False,
+                                 v=self._max_size: self.set_size(v))
         menu.addSeparator()
         rem_menu = menu.addMenu("⏰ 定时提醒")
         a_add = rem_menu.addAction("➕ 添加提醒…")
@@ -1144,11 +1169,12 @@ class PetWindow(QWidget):
         self._tray.show()
 
     def _update_tray_icon(self):
-        pm = self._cache.any_frame(self._pet, 32)
+        pm = self._cache.any_frame(self._pet, 64)
         self._tray.setIcon(QIcon(pm))
 
     def _on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.DoubleClick:
+        # 单击切换显示/隐藏（类似微信）；双击不做任何事，避免连点
+        if reason == QSystemTrayIcon.Trigger:
             self._toggle_visible()
 
     # ================= 退出 =================
@@ -1187,6 +1213,9 @@ class TopBubble(QLabel):
 
 
 # --------------------------------------------------------------------------
+# 轮询勾选图（橙色底 + 白色 √）
+CHECK_IMG = os.path.join(SPRITE_DIR, "ui_check.png").replace("\\", "/")
+
 # 设置对话框基类（暖橙主题 + 圆角 + 阴影）
 # --------------------------------------------------------------------------
 DIALOG_QSS = f"""
@@ -1217,7 +1246,8 @@ QCheckBox {{ color:{UI_FG}; font-family:'Microsoft YaHei UI'; font-size:12px;
              background:transparent; spacing:8px; }}
 QCheckBox::indicator {{ width:17px; height:17px; border-radius:5px;
              border:1px solid {UI_INPUT_BD}; background:#ffffff; }}
-QCheckBox::indicator:checked {{ background:{UI_ACCENT}; border:1px solid {UI_ACCENT}; }}
+QCheckBox::indicator:checked {{ background:{UI_ACCENT}; border:1px solid {UI_ACCENT};
+             image:url({CHECK_IMG}); }}
 """
 
 
@@ -1447,60 +1477,178 @@ class SleepDialog(BaseDialog):
 
 
 # --------------------------------------------------------------------------
-# 提示语设置对话框（Tabs 按形象，支持增删自定义提示语）
-# --------------------------------------------------------------------------
+# 提示语设置对话框（流式标签 + 可关闭 ×，类似 Android 新闻 Tabs）
 class MsgDialog(BaseDialog):
-    """提示语设置：QTabWidget 每个形象一页；按状态（待机/开心/睡觉/惊喜）
-    列出提示语，可添加（回车或按钮）与删除选中，改动即时持久化。"""
+    """每个形象一个流式胶囊标签（可横向滚动），标签带 × 删除：
+    删除即清除该形象的自定义提示语（恢复默认拟声）并移除标签；
+    右下 "+" 可重新添加已移除的形象。"""
     STATE_NAMES = [("idle", "待机"), ("happy", "开心"),
                    ("sleep", "睡觉"), ("surprise", "惊喜")]
+    _TAB_QSS = f"""
+    QPushButton#pet_tab {{ background:{UI_BG2}; color:{UI_FG};
+        border:1px solid {UI_INPUT_BD}; border-radius:13px;
+        padding:4px 12px; font-family:'Microsoft YaHei UI'; font-size:12px; }}
+    QPushButton#pet_tab:checked {{ background:{UI_ACCENT}; color:#ffffff;
+        border-color:{UI_ACCENT}; }}
+    QPushButton#pet_close {{ background:transparent; border:none;
+        color:{UI_SUB}; font-size:13px; padding:0 4px; }}
+    QPushButton#pet_close:hover {{ color:{UI_ERR}; }}
+    QPushButton#pet_add {{ background:#ffffff; color:{UI_ACCENT};
+        border:1px dashed {UI_ACCENT}; border-radius:13px; padding:4px 10px;
+        font-family:'Microsoft YaHei UI'; font-size:14px; }}
+    QPushButton#pet_add:hover {{ background:{UI_BG2}; }}
+    """
 
     def __init__(self, pet_win):
         super().__init__("💬 提示语设置")
         self._pet = pet_win
-        tabs = QTabWidget(self)
-        tabs.setObjectName("msg_tabs")
-        self._edits = {}
-        for key, label in PETS:
-            page = QWidget()
-            pl = QVBoxLayout(page)
-            pl.setContentsMargins(10, 10, 10, 10)
-            pl.setSpacing(8)
-            row = QHBoxLayout()
-            row.addWidget(self._label("状态："))
-            cb = QComboBox()
-            for _, nm in self.STATE_NAMES:
-                cb.addItem(nm)
-            row.addWidget(cb)
-            row.addStretch(1)
-            pl.addLayout(row)
-            lst = QListWidget(page)
-            pl.addWidget(lst, 1)
-            add_row = QHBoxLayout()
-            inp = QLineEdit(page)
-            inp.setPlaceholderText("输入新提示语，回车或点添加…")
-            add_btn = QPushButton("添加")
-            add_btn.setObjectName("secondary")
-            del_btn = QPushButton("删除选中")
-            del_btn.setObjectName("secondary")
-            add_row.addWidget(inp, 1)
-            add_row.addWidget(add_btn)
-            add_row.addWidget(del_btn)
-            pl.addLayout(add_row)
-            self._edits[key] = {"cb": cb, "lst": lst, "inp": inp}
-            self._reload(key)
-            cb.currentIndexChanged.connect(
-                lambda _=0, k=key: self._reload(k))
-            add_btn.clicked.connect(lambda _=False, k=key: self._add_msg(k))
-            del_btn.clicked.connect(lambda _=False, k=key: self._del_msg(k))
-            inp.returnPressed.connect(lambda k=key: self._add_msg(k))
-            tabs.addTab(page, label)
-        self._lay.addWidget(tabs, 1)
+        self.setStyleSheet(self.styleSheet() + self._TAB_QSS)
+        # 流式标签栏（横向滚动）
+        self._bar_wrap = QScrollArea(self)
+        self._bar_wrap.setFixedHeight(50)
+        self._bar_wrap.setWidgetResizable(True)
+        self._bar_wrap.setFrameShape(QFrame.NoFrame)
+        self._bar_wrap.setStyleSheet(
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollBar:horizontal{height:6px;background:transparent;}"
+            "QScrollBar::handle:horizontal{background:%s;border-radius:3px;}"
+            "QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal{width:0;}"
+            "QScrollBar::add-page:horizontal,QScrollBar::sub-page:horizontal{background:transparent;}"
+            % UI_INPUT_BD)
+        self._bar = QWidget()
+        self._bar.setStyleSheet("background:transparent;")
+        self._bar_lay = QHBoxLayout(self._bar)
+        self._bar_lay.setContentsMargins(4, 6, 4, 6)
+        self._bar_lay.setSpacing(6)
+        self._bar_lay.addStretch(1)
+        self._bar_wrap.setWidget(self._bar)
+        self._lay.addWidget(self._bar_wrap)
+        # 内容区
+        self._stack = QStackedWidget(self)
+        self._stack.setStyleSheet("QStackedWidget{background:transparent;}")
+        self._lay.addWidget(self._stack, 1)
         self._err_label()
         self._btn_row(self.accept)
+        self._pages = {}      # key -> [page, tab_btn, close_btn]
+        self._order = []
+        for key, label in PETS:
+            self._add_pet_tab(key, label, select=True)
+        self._make_add_btn()
         self._center()
-        self.resize(480, 440)
+        self.resize(520, 460)
 
+    # ---------- 标签构建 ----------
+    def _add_pet_tab(self, key, label, select=False):
+        page = self._build_page(key, label)
+        tbtn = QPushButton(label, self._bar)
+        tbtn.setObjectName("pet_tab")
+        tbtn.setCheckable(True)
+        tbtn.setCursor(Qt.PointingHandCursor)
+        tbtn.clicked.connect(lambda _=False, k=key: self._select(k))
+        cbtn = QPushButton("✕", self._bar)
+        cbtn.setObjectName("pet_close")
+        cbtn.setCursor(Qt.PointingHandCursor)
+        cbtn.clicked.connect(lambda _=False, k=key: self._remove_tab(k))
+        idx = self._bar_lay.count() - 1
+        self._bar_lay.insertWidget(idx, tbtn)
+        self._bar_lay.insertWidget(idx + 1, cbtn)
+        self._pages[key] = [page, tbtn, cbtn]
+        self._order.append(key)
+        if select:
+            self._select(key)
+        return page
+
+    def _build_page(self, key, label):
+        page = QWidget()
+        pl = QVBoxLayout(page)
+        pl.setContentsMargins(10, 10, 10, 10)
+        pl.setSpacing(8)
+        row = QHBoxLayout()
+        row.addWidget(self._label(f"{label} · 状态："))
+        cb = QComboBox()
+        for _, nm in self.STATE_NAMES:
+            cb.addItem(nm)
+        row.addWidget(cb)
+        row.addStretch(1)
+        pl.addLayout(row)
+        lst = QListWidget(page)
+        pl.addWidget(lst, 1)
+        add_row = QHBoxLayout()
+        inp = QLineEdit(page)
+        inp.setPlaceholderText("输入新提示语，回车或点添加…")
+        add_btn = QPushButton("添加")
+        add_btn.setObjectName("secondary")
+        del_btn = QPushButton("删除选中")
+        del_btn.setObjectName("secondary")
+        add_row.addWidget(inp, 1)
+        add_row.addWidget(add_btn)
+        add_row.addWidget(del_btn)
+        pl.addLayout(add_row)
+        self._edits = getattr(self, "_edits", {})
+        self._edits[key] = {"cb": cb, "lst": lst, "inp": inp}
+        self._reload(key)
+        cb.currentIndexChanged.connect(lambda _=0, k=key: self._reload(k))
+        add_btn.clicked.connect(lambda _=False, k=key: self._add_msg(k))
+        del_btn.clicked.connect(lambda _=False, k=key: self._del_msg(k))
+        inp.returnPressed.connect(lambda k=key: self._add_msg(k))
+        self._stack.addWidget(page)
+        return page
+
+    def _make_add_btn(self):
+        ab = QPushButton("＋", self._bar)
+        ab.setObjectName("pet_add")
+        ab.setCursor(Qt.PointingHandCursor)
+        ab.clicked.connect(self._add_missing_menu)
+        self._bar_lay.addWidget(ab)
+        self._add_btn = ab
+
+    def _add_missing_menu(self):
+        missing = [k for k, _ in PETS if k not in self._pages]
+        if not missing:
+            self.show_bubble("所有形象都已添加", 1500)
+            return
+        mm = QMenu(self)
+        mm.setStyleSheet(self._menu_qss())
+        for key in missing:
+            a = mm.addAction(PET_LABEL.get(key, key))
+            a.triggered.connect(lambda _=False, k=key: self._add_pet_tab(
+                k, PET_LABEL.get(k, k), select=True))
+        mm.exec_(self._add_btn.mapToGlobal(
+            self._add_btn.rect().bottomLeft()))
+
+    # ---------- 标签交互 ----------
+    def _select(self, key):
+        idx = self._stack.indexOf(self._pages[key][0])
+        if idx >= 0:
+            self._stack.setCurrentIndex(idx)
+        for k, (_, tb, _) in self._pages.items():
+            tb.setChecked(k == key)
+
+    def _remove_tab(self, key):
+        if key not in self._pages:
+            return
+        remove_pet_msgs(key)     # 清除自定义 → 恢复默认拟声
+        page, tbtn, cbtn = self._pages.pop(key)
+        self._bar_lay.removeWidget(tbtn)
+        tbtn.deleteLater()
+        self._bar_lay.removeWidget(cbtn)
+        cbtn.deleteLater()
+        self._stack.removeWidget(page)
+        page.deleteLater()
+        self._order.remove(key)
+        if self._stack.count() == 0:
+            empty = QLabel("已移除全部形象，点右下“＋”重新添加", self._stack)
+            empty.setAlignment(Qt.AlignCenter)
+            empty.setObjectName("sub")
+            self._stack.addWidget(empty)
+            self._stack.setCurrentWidget(empty)
+        else:
+            n = self._stack.count()
+            self._stack.setCurrentIndex(min(self._stack.currentIndex(), n - 1))
+            self._select(self._order[-1])
+        self._pet.show_bubble(f"已移除{PET_LABEL.get(key, key)}提示语（恢复默认）", 1800)
+
+    # ---------- 状态/增删（逻辑与原版一致） ----------
     def _state_of(self, key):
         return self.STATE_NAMES[self._edits[key]["cb"].currentIndex()][0]
 
@@ -1538,7 +1686,6 @@ class MsgDialog(BaseDialog):
         self._reload(key)
 
 
-# --------------------------------------------------------------------------
 # 主程序
 # --------------------------------------------------------------------------
 def main():

@@ -83,7 +83,7 @@ _migrate_legacy_data()
 # ---------- 通用常量 ----------
 KEY = "#160015"            # 透明键色（深品红：与深色描边混合后边缘晕染几乎不可见）
 DEFAULT_PET_SIZE = 300     # 宠物默认显示尺寸(px)
-MIN_PET_SIZE = 150         # 宠物最小尺寸阈值(px)
+MIN_PET_SIZE = 50          # 宠物最小尺寸阈值(px)
 MAX_PET_SIZE = 600         # 宠物最大尺寸阈值(px，= 素材原始分辨率上限)
 SIZE_STEP = 50             # 尺寸调节步长(px)
 WIN_MARGIN = 20            # 窗口比宠物宽出的边距
@@ -374,6 +374,16 @@ def pick_pet_msg(pet_key, state):
     return random.choice(msgs)
 
 
+def remove_pet_msgs(pet_key):
+    """清除某形象的自定义提示语（恢复为默认拟声）"""
+    data = load_data() or {}
+    pet_msgs = dict(data.get("pet_msgs") or {})
+    if pet_key in pet_msgs:
+        del pet_msgs[pet_key]
+        data["pet_msgs"] = pet_msgs
+        save_data(data)
+
+
 # ---------- 提醒列表 ↔ 数据文件 转换 ----------
 def timers_from_entries(entries):
     """从数据文件的 reminders 列表恢复定时提醒。
@@ -553,7 +563,7 @@ __all__ = [
     "ACTION_KEY", "SPRITES", "ANIM_SPRITES", "FONT", "FONT_BOLD",
     "UI_BG", "UI_BG2", "UI_FG", "UI_SUB", "UI_ACCENT", "UI_ACCENT_HI",
     "UI_ERR", "UI_INPUT_BD", "UI_MENU_HI", "MESSAGES", "PET_MSGS",
-    "get_pet_msgs", "save_pet_msgs", "pick_pet_msg",
+    "get_pet_msgs", "save_pet_msgs", "pick_pet_msg", "remove_pet_msgs",
     "parse_reminder", "fmt_remaining", "parse_clock", "_normalize_daily_action",
     "AUTOSTART_KEY", "AUTOSTART_NAME", "autostart_command",
     "is_autostart_enabled", "set_autostart",
